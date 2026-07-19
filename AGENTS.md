@@ -8,10 +8,11 @@ Commit history:
 
 | Commit | Date | What |
 |--------|------|------|
-| `3d94a50` | 2026-07-18 | Init scaffold (contained `writing/weiter-llm/` plan) |
-| `7f80490` | 2026-07-18 | Extracted weiter-llm to standalone repo; cleared all files |
-| `129e51d` | 2026-07-18 | init: blank scaffold |
-| `HEAD` | 2026-07-18 | feat: project skeleton — core lib, CLI, TUI, GUI |
+| `4f8a2c5` | 2026-07-19 | Initial commit (GitHub) |
+| `HEAD` | 2026-07-19 | refactor: rename src/perchance* -> src/perchance_toolkit* |
+| | | docs: add README and ADRs for architecture decisions |
+| | | ci: add GitHub Actions workflow for ruff, mypy, pytest |
+| | | docs: add ADRs for HTTP client, Pydantic, CLI, package manager |
 
 ## Architecture
 
@@ -24,6 +25,8 @@ src/
 │   └── models/                 # Pydantic v2 models
 ├── perchance_toolkit_cli/      # CLI (click + rich)
 │   └── commands/               # run, search, list, export, auth, config, info
+├── perchance_toolkit_tui/      # TUI (textual)
+├── perchance_toolkit_gui/      # GUI (PySide6)
 └── tests/                      # pytest suite
 ```
 
@@ -32,7 +35,7 @@ Persistence: SQLite (~/.local/share/perchance/history.db), YAML config (~/.confi
 
 ## Key Components
 
-### `perchance_engine.py` — Pure-Python template evaluator
+### `perchance_engine.py` (`src/perchance_toolkit/core/`) — Pure-Python template evaluator
 - `PerchanceEngine`: fetches generator data via curl_cffi (`impersonate="chrome120"`), parses modelText, evaluates templates
 - `_parse_model(text)`: parses perchance DSL into named `sections` dict + `root_assignments`
 - `_parse_item(text)`: classifies each line as kind=`text`/`expr`/`import`/`assign`, with `^weight` suffix parsing
@@ -41,13 +44,13 @@ Persistence: SQLite (~/.local/share/perchance/history.db), YAML config (~/.confi
 - `_evaluate_with_scope(sections, root_assignments)`: processes root assignments, calls `evaluate("[output]")`
 - `_weighted_choice(items, rng)`: weighted random selection
 
-### `run.py` — Interactive input form
+### `run.py` (`src/perchance_toolkit_cli/commands/`) — Interactive input form
 - `_classify_sections(sections)`: infers field types from parsed sections — `text`, `int`, `dropdown`, `fileUpload`
 - `_is_displayable_text(text)`: filters out template expressions (`[...]`) and brace ranges (`{1-6}`) from dropdown choices
 - `_interactive_prompt(gen_id, sections)`: typed interactive form via rich.prompt, saves/loads `~/.perchance/generators/<id>.config.yaml`
 - **Section override flow**: `run_cmd()` → `_interactive_prompt()` → `section_overrides` dict → `runner.run()` → `client.run_generator()` → `engine.evaluate_raw(section_overrides=...)` → merged into `sections` dict before evaluation
 
-### `formatting.py` — Output rendering
+### `formatting.py` (`src/perchance_toolkit_cli/`) — Output rendering
 - `_IS_KITTY`: detects Kitty terminal via `TERM=xterm-kitty`
 - `_render_image(data_uri)`: decodes `data:image/...` base64, pipes through `kitty +kitten icat --stdin yes`; fallback prints metadata
 - `print_generation(gen)`: auto-detects image output, renders text/markdown/json/html
@@ -58,14 +61,15 @@ Persistence: SQLite (~/.local/share/perchance/history.db), YAML config (~/.confi
 - CLI `--verbose`/`-v` flag enables trace logging via `logging.basicConfig`
 - One logical change per commit
 - Models use Pydantic v2, storage uses SQLAlchemy ORM, API uses curl_cffi
+- Package management via `uv`; `uv.lock` committed
 - Keep AGENTS.md up to date
 
 ## Commands
 
 ```bash
-# setup
-python3 -m venv .venv
-source .venv/bin/activate
+# setup (uv preferred)
+uv pip install -e ".[dev]"
+# or with pip
 pip install -e ".[dev]"
 
 # CLI
@@ -81,11 +85,21 @@ perchance auth login|logout|status
 perchance config get|set <key> <value>
 
 # quality
-python -m pytest tests/ -v
-ruff check src/
-mypy src/
+uv run pytest tests/ -v
+uv run ruff check src/
+uv run mypy src/
 ```
 
 ## Blocked
 - `perchance run image "prompt"` fails `AuthenticationError: Failed to retrieve user key` — `verifyUser` behind Cloudflare
 - `medieval-fantasy-generator` doesn't exist on perchance.org
+
+## ADRs
+Architecture Decision Records in `docs/decisions/`:
+- ADR-001: Multi-UI architecture (separate packages)
+- ADR-002: Pure-Python template engine
+- ADR-003: SQLite + YAML storage
+- ADR-004: curl_cffi HTTP client
+- ADR-005: Pydantic v2 models
+- ADR-006: Click + Rich CLI
+- ADR-007: uv package manager
