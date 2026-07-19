@@ -27,8 +27,9 @@ _METHOD_RE = re.compile(r"(\w+)\((.*)\)")
 def _fetch_generator_data(gen_id: str) -> dict:
     """Fetch raw generator JSON from perchance.org via curl_cffi."""
     log.debug("Fetching generator data for '%s'", gen_id)
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "", gen_id) or gen_id
     resp = requests.get(
-        f"https://perchance.org/{gen_id}",
+        f"https://perchance.org/{safe}",
         impersonate="chrome120",
         timeout=15,
     )

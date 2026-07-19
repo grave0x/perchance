@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any, Optional
 
 import click
@@ -27,7 +27,8 @@ CONFIG_DIR = Path.home() / ".perchance" / "generators"
 
 
 def _load_config(gen_id: str) -> dict | None:
-    path = CONFIG_DIR / f"{gen_id}.config.yaml"
+    safe = PurePath(gen_id).name
+    path = CONFIG_DIR / f"{safe}.config.yaml"
     if path.exists():
         import yaml
 
@@ -40,7 +41,8 @@ def _save_config(gen_id: str, data: dict) -> None:
     import yaml
 
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    path = CONFIG_DIR / f"{gen_id}.config.yaml"
+    safe = PurePath(gen_id).name
+    path = CONFIG_DIR / f"{safe}.config.yaml"
     with open(path, "w") as f:
         yaml.dump(data, f, default_flow_style=False)
 

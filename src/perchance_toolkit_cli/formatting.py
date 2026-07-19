@@ -23,6 +23,22 @@ console = Console()
 _IS_KITTY = os.environ.get("TERM") == "xterm-kitty"
 log.debug("_IS_KITTY=%s (TERM=%s)", _IS_KITTY, os.environ.get("TERM"))
 
+# Image magic bytes for validation
+_IMAGE_MAGIC: dict[str, bytes] = {
+    "image/png": b"\x89PNG\r\n\x1a\n",
+    "image/jpeg": b"\xff\xd8\xff",
+    "image/gif": b"GIF8",
+    "image/webp": b"RIFF",
+}
+
+
+def _detect_image_type(raw: bytes) -> tuple[str | None, bytes | None]:
+    """Detect image MIME type from magic bytes. Returns (mime, magic) or (None, None)."""
+    for mime, magic in _IMAGE_MAGIC.items():
+        if raw.startswith(magic):
+            return mime, magic
+    return None, None
+
 
 def _render_image(data_uri: str) -> None:
     """Decode a ``data:image/...`` URI and display via Kitty graphics protocol."""
@@ -36,6 +52,12 @@ def _render_image(data_uri: str) -> None:
     log.debug("_render_image: fmt=%s, size=%d bytes", fmt, len(raw))
 
     if _IS_KITTY:
+        # Validate image magic bytes before piping to subprocess
+        image_mime, _ = _detect_image_type(raw)
+        if image_mime is None:
+            log.warning("_render_image: unrecognized image format, skipping icat")
+            _print_image_info(fmt, len(raw))
+            return
         ret = subprocess.run(
             ["kitty", "+kitten", "icat", "--stdin", "yes", "--transfer-mode", "stream"],
             input=raw,
