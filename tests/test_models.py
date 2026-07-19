@@ -1,9 +1,9 @@
 """Unit tests for perchance domain models."""
+from perchance_toolkit.models.generation import ExportFormat, Generation
 
-from perchance.models.generation import ExportFormat, Generation
-from perchance.models.generator import Generator
-from perchance.models.user import AccountStatus, User
+from perchance_toolkit.models.generator import Generator
 
+from perchance_toolkit.models.user import AccountStatus, User
 
 def test_generation_export_text() -> None:
     gen = Generation(

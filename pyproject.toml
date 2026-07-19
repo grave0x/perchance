@@ -3,22 +3,24 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "perchance"
+name = "perchance-toolkit"
 version = "0.1.0"
 description = "CLI, TUI, and GUI applications for perchance.org"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "perchance contributors"},
+    {name = "perchance-toolkit contributors"},
 ]
 
 dependencies = [
     "click>=8.1",
     "rich>=13.0",
-    "httpx>=0.27",
+    "perchance>=0.1",
+    "playwright>=1.57",
     "pydantic>=2.0",
     "pyyaml>=6.0",
     "sqlalchemy>=2.0",
+    "curl-cffi>=0.7",
 ]
 
 [project.optional-dependencies]
@@ -31,13 +33,19 @@ dev = [
     "ruff>=0.3",
     "pre-commit>=3.0",
 ]
-all = ["perchance[tui,gui]"]
+all = ["perchance-toolkit[tui,gui]"]
 
 [project.scripts]
-perchance = "perchance_cli.main:cli"
+perchance-toolkit = "perchance_toolkit_cli.main:cli"
+perchance = "perchance_toolkit_cli.main:cli"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/perchance", "src/perchance_cli"]
+packages = [
+    "src/perchance_toolkit",
+    "src/perchance_toolkit_cli",
+    "src/perchance_toolkit_tui",
+    "src/perchance_toolkit_gui",
+]
 
 [tool.hatch.build.targets.sdist]
 include = ["/src"]
@@ -45,6 +53,9 @@ include = ["/src"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.mypy]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
