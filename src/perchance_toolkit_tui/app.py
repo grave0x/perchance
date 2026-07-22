@@ -7,6 +7,11 @@ from textual.screen import Screen
 from textual.widgets import Header, Footer, Static, ListView, ListItem
 from textual.containers import Vertical
 
+from perchance_toolkit_tui.screens.search import SearchScreen
+from perchance_toolkit_tui.screens.history import HistoryScreen
+from perchance_toolkit_tui.screens.generator_detail import GeneratorDetailScreen
+from perchance_toolkit_tui.screens.settings import SettingsScreen
+
 
 class MainScreen(Screen):
     """Main screen with navigation to other screens."""
@@ -36,7 +41,7 @@ class MainScreen(Screen):
             case "Browse History":
                 self.app.push_screen("history")
             case "Favorites":
-                self.app.push_screen("history", {"favorites": True})  # type: ignore[call-overload]
+                self.app.push_screen("favorites")
             case "Settings":
                 self.app.push_screen("settings")
 
@@ -44,7 +49,14 @@ class MainScreen(Screen):
 class PerchanceTUI(App):
     """Main TUI application."""
 
-    SCREENS = {"main": MainScreen}  # type: ignore[assignment]
+    SCREENS = {
+        "main": MainScreen,
+        "run": GeneratorDetailScreen,
+        "search": SearchScreen,
+        "history": HistoryScreen,
+        "favorites": HistoryScreen,
+        "settings": SettingsScreen,
+    }
 
     def on_mount(self) -> None:
         self.push_screen("main")

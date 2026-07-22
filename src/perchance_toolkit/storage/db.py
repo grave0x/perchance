@@ -56,6 +56,15 @@ class Database:
             s.merge(generation)
             s.commit()
 
+    def get_generation(self, generation_id: str) -> GenerationRow | None:
+        """Look up a single generation by its ID."""
+        with self.session as s:
+            return (
+                s.query(GenerationRow)
+                .filter(GenerationRow.id == generation_id)
+                .first()
+            )
+
     def get_history(
         self, limit: int = 50, offset: int = 0
     ) -> list[GenerationRow]:

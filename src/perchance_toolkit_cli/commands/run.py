@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from pathlib import Path, PurePath
 from typing import Any, Optional
@@ -58,11 +59,13 @@ def _is_displayable_text(text: str) -> bool:
     t = text.strip()
     if not t:
         return False
-    # Skip if it contains bracket expressions like [method.call] or [a][b]
-    if "[" in t or "]" in t:
-        return False
     # Skip bare brace expressions like {1-6}
-    if t.startswith("{") and t.endswith("}"):
+    if t.startswith("{") and t.endswith("}") and "|" not in t:
+        return False
+    # Skip if entirely bracket expressions like [method.call] or [a][b]
+    # (but allow text with inline [expr] like "hello [name]")
+    stripped_brackets = re.sub(r"\[[^\[\]]*\]", "", t).strip()
+    if not stripped_brackets:
         return False
     return True
 
@@ -178,18 +181,19 @@ def _interactive_prompt(gen_id: str, sections: dict) -> dict[str, str]:
     Returns ``{section_name: value}`` overrides.
     """
     cfg = _load_config(gen_id) or {}
+    saved_overrides = cfg.get("_overrides", {})
     log.debug("_interactive_prompt: loaded config for '%s': %s", gen_id, cfg)
     fields = _classify_sections(sections)
 
     if not fields:
         # Fallback: just ask for a prompt
         log.debug("_interactive_prompt: no fields, falling back to freeform prompt")
-        prompt = cfg.get("prompt", "")
+        prompt = saved_overrides.get("input", "")
         val = Prompt.ask(
             f"[bold]Prompt[/bold] for [cyan]{gen_id}[/cyan]",
             default=prompt or None,
         )
-        _save_config(gen_id, {"prompt": str(val), "interactive": True})
+        _save_config(gen_id, {"_overrides": {"input": str(val)}, "_interactive": True})
         return {"input": str(val)}
 
     # Show header
@@ -236,11 +240,11 @@ def _interactive_prompt(gen_id: str, sections: dict) -> dict[str, str]:
         val = handler(f)
         overrides[f["name"]] = val
 
-    # Save to config
+    # Save to config (prefix metadata keys to avoid collision with section names)
     _save_config(gen_id, {
-        **overrides,
-        "interactive": True,
-        "last_run": datetime.now(timezone.utc).isoformat(),
+        "_overrides": overrides,
+        "_interactive": True,
+        "_last_run": datetime.now(timezone.utc).isoformat(),
     })
 
     return overrides
@@ -254,7 +258,7 @@ def _fetch_sections(client: PerchanceClient, gen_id: str) -> dict:
     from perchance_toolkit.core.perchance_engine import _parse_model
 
     log.debug("Fetching sections for '%s'", gen_id)
-    data = client._engine.fetch_data(gen_id)
+    data = client.fetch_generator_data(gen_id)
     model_len = len(data.get("modelText", ""))
     log.debug("Fetched %d chars of modelText for '%s'", model_len, gen_id)
     sections, _ = _parse_model(data.get("modelText", ""))

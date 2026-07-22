@@ -82,7 +82,7 @@ def _parse_model(text: str) -> tuple[dict[str, list[Item]], list[Item]]:
         indent = len(line) - len(line.lstrip())
         stripped = line.strip()
 
-        # Skip comments
+        # Skip comments (full-line or inline-stripped to empty)
         if not stripped or stripped.startswith(("//", "#", "'")):
             continue
 
@@ -95,15 +95,20 @@ def _parse_model(text: str) -> tuple[dict[str, list[Item]], list[Item]]:
             current_name = ""
             current_items = []
 
+            # Strip inline // from root line before parsing
+            cleaned = _strip_inline_comment(stripped)
+            if not cleaned:
+                continue
+
             # Root-level assignment?
-            item = _parse_item(stripped)
+            item = _parse_item(cleaned)
             if item["kind"] == "assign":
                 root_assignments.append(item)
                 log.debug("  root-assign: %s", item["text"][:60])
                 continue
 
             # Otherwise it's a section header
-            current_name = stripped.split()[0]  # first word = section name
+            current_name = cleaned.split()[0]  # first word = section name
         else:
             current_items.append(_parse_item(stripped))
 
@@ -121,10 +126,25 @@ def _parse_model(text: str) -> tuple[dict[str, list[Item]], list[Item]]:
     return sections, root_assignments
 
 
+def _strip_inline_comment(text: str) -> str:
+    """Strip inline ``//`` comments (but not ``://`` URLs)."""
+    # Find // that's not part of ://
+    idx = text.find("//")
+    while idx >= 0:
+        # Check it's not ://
+        if idx == 0 or text[idx - 1] != ":":
+            return text[:idx].rstrip()
+        idx = text.find("//", idx + 2)
+    return text
+
+
 def _parse_item(text: str) -> Item:
     """Parse a single item line, extracting weight and kind."""
+    # Strip inline // comments first
+    text = _strip_inline_comment(text)
+
     weight = 1.0
-    # Trailing `^number` = weight
+    # Trailing `^number` = weight (after comment removal)
     wm = re.search(r"\^(\d+(?:\.\d+)?)\s*$", text)
     if wm:
         weight = float(wm.group(1))
@@ -196,21 +216,10 @@ class PerchanceEval:
         """
         log.debug("  evaluate: %r", text[:120])
         result = text
-        # Handle {min-max} ranges — must not contain `|`
-        result = re.sub(
-            r"\{(?:(\d+)\s*-\s*(\d+))\}",
-            lambda m: str(
-                self._engine.random.randint(int(m.group(1)), int(m.group(2)))
-            ),
-            result,
-        )
-        # Handle {import:...} — skip, handled by item kind
-        # Handle {a|b|c} OR-expressions (not import, not range)
-        def _replace_or(m: re.Match) -> str:
-            options = [o.strip() for o in m.group(1).split("|")]
-            return self.evaluate(self._engine.random.choice(options))
 
-        result = re.sub(r"\{(?!import:)([^}]+)\}", _replace_or, result)
+        # Handle all brace expressions ({min-max}, {a|b|c}, {import:...})
+        # with proper nesting via depth-counting
+        result = _process_braces(result, self._engine, self)
 
         # Handle [expressions]
         parts = re.split(r"(\[.*?\])", result)
@@ -221,13 +230,6 @@ class PerchanceEval:
             else:
                 result_parts.append(part)
         result = "".join(result_parts)
-
-        # Handle remaining {import:...} blocks embedded in text
-        result = re.sub(
-            r"\{import:([^}]+)\}",
-            lambda m: self._engine.evaluate_import(m.group(0)),
-            result,
-        )
 
         return result
 
@@ -629,7 +631,7 @@ class PerchanceEngine:
         section_overrides:
             Map of section name → override value for any section.
         """
-        old_seed = self.random
+        old_rng = self.random
         if seed is not None:
             self.random = random.Random(seed)
             log.debug("evaluate_raw: seed=%s", seed)
@@ -646,7 +648,7 @@ class PerchanceEngine:
             return self._evaluate_with_scope(sections, root_assignments)
         finally:
             if seed is not None:
-                self.random = old_seed
+                self.random = old_rng
 
     def search(self, query: str, limit: int = 20) -> list[dict]:
         """Search for generators matching *query* on perchance.org.
@@ -691,6 +693,84 @@ def _weighted_choice(items: list[Item], rng: random.Random) -> Item:
             log.debug("  _weighted_choice: picked %r (w=%s)", it["text"], it["weight"])
             return it
     return items[-1]
+
+
+def _process_braces(text: str, engine: 'PerchanceEngine', eval_scope: 'PerchanceEval') -> str:
+    """Handle all brace expressions ({a|b|c}, {min-max}, {import:...}) with proper nesting."""
+    result = []
+    i = 0
+    while i < len(text):
+        if text[i] == "{":
+            # Find matching } at depth 0
+            depth = 1
+            j = i + 1
+            while j < len(text) and depth > 0:
+                if text[j] == "{":
+                    depth += 1
+                elif text[j] == "}":
+                    depth -= 1
+                j += 1
+            if depth == 0:
+                inner = text[i + 1 : j - 1]
+                # {import:...}
+                if inner.startswith("import:"):
+                    result.append(engine.evaluate_import(inner))
+                # {min-max} range
+                elif re.fullmatch(r"\d+\s*-\s*\d+", inner):
+                    parts = inner.split("-", 1)
+                    lo, hi = int(parts[0].strip()), int(parts[1].strip())
+                    result.append(str(engine.random.randint(lo, hi)))
+                # {a|b|c} OR-expression
+                elif "|" in inner:
+                    options = _split_or_options(inner)
+                    chosen = engine.random.choice(options)
+                    result.append(eval_scope.evaluate(chosen))
+                # {s} pluralization suffix
+                elif inner == "s":
+                    prev = "".join(result)
+                    if prev and prev[-1] in "sxz":
+                        result.append("es")
+                    else:
+                        result.append("s")
+                # {a} / {A} article (choose a/an based on next word)
+                elif inner in ("a", "A"):
+                    next_text = text[j:].lstrip()
+                    next_word = re.match(r"[a-zA-Z]+", next_text)
+                    starts_with_vowel = bool(next_word and next_word.group(0)[0].lower() in "aeiou")
+                    if inner == "a":
+                        result.append("an" if starts_with_vowel else "a")
+                    else:
+                        result.append("An" if starts_with_vowel else "A")
+                else:
+                    # Plain brace content — keep as literal
+                    result.append("{" + inner + "}")
+                i = j
+                continue
+        result.append(text[i])
+        i += 1
+    return "".join(result)
+
+
+def _split_or_options(inner: str) -> list[str]:
+    """Split OR-expression inner content by `|` at depth 0."""
+    options = []
+    current = []
+    depth = 0
+    for ch in inner:
+        if ch == "{":
+            depth += 1
+            current.append(ch)
+        elif ch == "}":
+            depth -= 1
+            current.append(ch)
+        elif ch == "|" and depth == 0:
+            options.append("".join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+    if current:
+        options.append("".join(current).strip())
+    return options
 
 
 def _strip_html(text: str) -> str:

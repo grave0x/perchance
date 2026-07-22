@@ -48,7 +48,16 @@ def _render_image(data_uri: str) -> None:
         return
 
     fmt, _, b64data = data_uri.partition(";base64,")
-    raw = base64.b64decode(b64data)
+    if not b64data:
+        log.warning("_render_image: missing base64 data in URI")
+        _print_image_info(fmt, 0)
+        return
+    try:
+        raw = base64.b64decode(b64data)
+    except Exception as exc:
+        log.warning("_render_image: base64 decode failed: %s", exc)
+        _print_image_info(fmt, len(b64data))
+        return
     log.debug("_render_image: fmt=%s, size=%d bytes", fmt, len(raw))
 
     if _IS_KITTY:

@@ -30,7 +30,8 @@ class ConfigManager:
     def _load(self) -> None:
         if self._path.exists():
             raw = self._path.read_text()
-            self._data = yaml.safe_load(raw) or {}
+            loaded = yaml.safe_load(raw)
+            self._data = loaded if isinstance(loaded, dict) else dict(DEFAULT_CONFIG)
         else:
             self._data = dict(DEFAULT_CONFIG)
             self._save()

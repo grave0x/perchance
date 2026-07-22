@@ -15,6 +15,7 @@ from perchance_toolkit_cli.formatting import console, print_search_results
 @click.pass_context
 def search_cmd(ctx: click.Context, query: str, limit: int) -> None:
     """Search for generators matching QUERY on perchance.org."""
+    # Stateless search — create engine directly (no client overhead)
     engine = PerchanceEngine()
     try:
         raw_results = engine.search(query, limit=limit)

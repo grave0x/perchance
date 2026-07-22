@@ -30,14 +30,11 @@ def export_cmd(
 ) -> None:
     """Export a generation to a file."""
     db = ctx.obj["db"]
-    rows = db.get_history(limit=1000)
-    match = [r for r in rows if r.id.startswith(generation_id)]
+    row = db.get_generation(generation_id)
 
-    if not match:
+    if row is None:
         console.print(f"[red]Generation '{generation_id}' not found.[/red]")
         return
-
-    row = match[0]
     gen = _row_to_generation(row)
     export_fmt = ExportFormat(fmt)
 

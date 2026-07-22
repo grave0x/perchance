@@ -38,6 +38,14 @@ class PerchanceClient:
 
     # -- Public API ---------------------------------------------------------
 
+    def fetch_generator_data(self, gen_id: str) -> dict:
+        """Fetch raw generator data from perchance.org.
+
+        Uses the pure-Python evaluator's fetch (curl_cffi, bypasses Cloudflare).
+        Returns the raw JSON dict with keys like ``modelText``.
+        """
+        return self._engine.fetch_data(gen_id)
+
     async def run_generator(
         self,
         generator_id: str,
